@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>유진 플래피 버드</title>
+<style>
+  html,body{margin:0;padding:0;background:#87ceeb;font-family:Verdana,Arial,sans-serif;overflow:hidden}
+  #game{display:block;margin:0 auto;background:#7fd3ff;image-rendering:pixelated;touch-action:manipulation}
+  #ui{position:fixed;top:10px;left:50%;transform:translateX(-50%);text-align:center;color:#fff;text-shadow:3px 3px 0 #000;font-weight:bold;z-index:2}
+  #score{font-size:42px;line-height:1}
+  #msg{font-size:18px;white-space:pre-line;margin-top:6px}
+</style>
+</head>
+<body>
+<div id="ui">
+  <div id="score">0</div>
+  <div id="msg">CLICK / SPACE TO START</div>
+</div>
+<canvas id="game" width="400" height="600"></canvas>
+<script>
+// ===== 여기 얼굴 이미지를 바꾸면 됨 =====
+const FACE_LIST = [
+  "images/face1.png",
+  "images/face2.png",
+  "images/face3.png",
+  "images/face4.png",
+  "images/face5.png",
+  "images/face6.png",
+  "images/face7.png",
+  "images/face8.png"
+];
+
+const FACE_SRC = FACE_LIST[Math.floor(Math.random() * FACE_LIST.length)];
+
+const c = document.getElementById('game');
+const x = c.getContext('2d');
+const scoreEl = document.getElementById('score');
+const msgEl = document.getElementById('msg');
+const W = c.width, H = c.height, GROUND = 90;
+const bestKey = 'ugly-face-flap-best';
+let best = +localStorage.getItem(bestKey) || 0;
+
+const face = new Image();
+let faceReady = false;
+face.onload = ()=> faceReady = true;
+face.src = FACE_SRC;
+
+let state, bird, pipes, score, spawn;
+reset('ready');
+
+function pickRandomFace() {
+  function pickRandomFace() {
+  faceReady = false;
+  face.src = FACE_LIST[Math.floor(Math.random() * FACE_LIST.length)];
+}
+  faceReady = false;
+  face.src = FACE_LIST[Math.floor(Math.random() * FACE_LIST.length)];
+}
+
+function reset(mode){
+  state = mode;
+  bird = {x:95,y:250,vy:0,r:24,rot:0,t:0};
+  pipes = [];
+  score = 0;
+  spawn = 0;
+  scoreEl.textContent = score;
+  if(mode==='ready') msgEl.textContent = 'CLICK / SPACE TO START';
+  if(mode==='over') msgEl.textContent = `GAME OVER\nscore ${score} / best ${best}\nCLICK / SPACE TO RETRY`;
+}
+
+function flap(){ bird.vy = -7.2; }
+function start(){ if(state==='ready'){ state='play'; msgEl.textContent=''; flap(); } else if(state==='over'){ reset('ready'); } else if(state==='play'){ flap(); } }
+
+addEventListener('keydown',e=>{ if(e.code==='Space'){ e.preventDefault(); start(); }});
+c.addEventListener('mousedown',start);
+c.addEventListener('touchstart',e=>{ e.preventDefault(); start(); }, {passive:false});
+
+
+function makePipe(){
+  const gap = 155;
+  const top = 60 + Math.random() * (H - GROUND - 220);
+  pipes.push({x:W+40,w:68,top:top,gap:gap,ok:false});
+}
+
+function hitRect(cx,cy,r,rx,ry,rw,rh){
+  let nx = Math.max(rx, Math.min(cx, rx+rw));
+  let ny = Math.max(ry, Math.min(cy, ry+rh));
+  let dx = cx-nx, dy = cy-ny;
+  return dx*dx+dy*dy < r*r;
+}
+
+function die(){
+  if(state!=='play') return;
+  state='over';
+  best = Math.max(best, score);
+  localStorage.setItem(bestKey, best);
+  msgEl.textContent = `GAME OVER\nscore ${score} / best ${best}\nCLICK / SPACE TO RETRY`;
+}
+
+function update(){
+  bird.t++;
+  if(state==='ready'){
+    bird.y = 250 + Math.sin(bird.t/12)*8;
+    bird.rot = Math.sin(bird.t/16)*0.08;
+    return;
+  }
+  if(state!=='play') return;
+
+  spawn++;
+  if(spawn>92){ spawn=0; makePipe(); }
+
+  bird.vy += 0.42;
+  bird.y += bird.vy;
+  bird.rot = Math.max(-0.5, Math.min(1.2, bird.vy/10));
+
+  if(bird.y < bird.r){ bird.y = bird.r; bird.vy = 0; }
+  if(bird.y + bird.r > H-GROUND) die();
+
+  for(let i=pipes.length-1;i>=0;i--){
+    let p = pipes[i];
+    p.x -= 2.8;
+    if(!p.ok && p.x+p.w < bird.x){ p.ok=true; score++; scoreEl.textContent=score; }
+    if(hitRect(bird.x,bird.y,bird.r*0.82,p.x,0,p.w,p.top) || hitRect(bird.x,bird.y,bird.r*0.82,p.x,p.top+p.gap,p.w,H-GROUND-(p.top+p.gap))) die();
+    if(p.x+p.w < -20) pipes.splice(i,1);
+  }
+}
+
+function draw(){
+  x.clearRect(0,0,W,H);
+
+  // 배경: 일부러 단순하고 허접하게
+  x.fillStyle='#70cfff'; x.fillRect(0,0,W,H);
+  x.fillStyle='#8bff8b'; x.fillRect(0,H-GROUND,W,GROUND);
+  x.fillStyle='#d8bb64'; x.fillRect(0,H-GROUND+18,W,GROUND-18);
+  for(let i=0;i<W;i+=20){ x.fillStyle=i%40===0?'#b99647':'#c7a85b'; x.fillRect((i+(Date.now()/20)%20)%W,H-GROUND+28,10,10); }
+
+  // 파이프
+  for(const p of pipes){
+    x.fillStyle='#25b325';
+    x.fillRect(p.x,0,p.w,p.top);
+    x.fillRect(p.x-4,p.top-18,p.w+8,18);
+    x.fillRect(p.x,p.top+p.gap,p.w,H-GROUND-(p.top+p.gap));
+    x.fillRect(p.x-4,p.top+p.gap,p.w+8,18);
+    x.strokeStyle='#0a5f0a';
+    x.lineWidth=3;
+    x.strokeRect(p.x,0,p.w,p.top);
+    x.strokeRect(p.x,p.top+p.gap,p.w,H-GROUND-(p.top+p.gap));
+  }
+
+  // 얼굴 캐릭터
+  x.save();
+  x.translate(bird.x,bird.y);
+  x.rotate(bird.rot);
+  x.fillStyle='rgba(255,255,255,0.25)';
+  x.beginPath(); x.arc(-18,0,6,0,Math.PI*2); x.arc(-26,0,4,0,Math.PI*2); x.fill();
+  x.beginPath();
+  x.ellipse(0,0,28,30,0,0,Math.PI*2);
+  x.fillStyle='#fff'; x.fill();
+  x.strokeStyle='#000'; x.lineWidth=3; x.stroke();
+  x.save();
+  x.beginPath(); x.ellipse(0,0,26,28,0,0,Math.PI*2); x.clip();
+  if(faceReady) x.drawImage(face,-34,-34,68,68);
+  else { x.fillStyle='#ffd3dc'; x.fillRect(-34,-34,68,68); }
+  x.restore();
+  // 허접한 귀여움 포인트
+  x.fillStyle='#ff5aa5';
+  x.beginPath(); x.arc(-10,10,3,0,Math.PI*2); x.arc(10,10,3,0,Math.PI*2); x.fill();
+  x.restore();
+
+  // 위아래 검은 테두리 느낌
+  x.strokeStyle='#000'; x.lineWidth=4; x.strokeRect(0,0,W,H);
+}
+
+(function loop(){ update(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>
